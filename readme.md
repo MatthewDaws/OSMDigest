@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/MatthewDaws/OSMDigest.svg?branch=master)](https://travis-ci.org/MatthewDaws/OSMDigest)
+
 # OSMDigest
 
 Some simple utilties for reading and processing raw Open Street Map download data, using pure python.  Mostly for my own interest (I try to stick to the Python standard library), but also with the hope this is of use to other people.

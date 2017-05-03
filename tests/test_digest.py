@@ -76,3 +76,72 @@ def test_parse_bz2():
     for x in digest.parse(os.path.join("tests", "example.osm.bz2")):
         out.append(x)
     check_example(out)
+
+def test_parse_sax():
+    out = []
+    for x in digest.parse_sax(os.path.join("tests", "example.osm")):
+        out.append(x)
+    check_example(out)
+    
+def test_parse_sax_gz():
+    out = []
+    for x in digest.parse_sax(os.path.join("tests", "example.osm.gz")):
+        out.append(x)
+    check_example(out)
+    
+def test_parse_sax_xz():
+    out = []
+    for x in digest.parse_sax(os.path.join("tests", "example.osm.xz")):
+        out.append(x)
+    check_example(out)
+
+def test_parse_sax_bz2():
+    out = []
+    for x in digest.parse_sax(os.path.join("tests", "example.osm.bz2")):
+        out.append(x)
+    check_example(out)
+
+class CapturingOSMDataHandler(digest.OSMDataHandler):
+    def __init__(self):
+        self.data = []
+        
+    def start(self, obj):
+        self.data.append(obj)
+        
+    def bounds(self, obj):
+        self.data.append(obj)
+
+    def node(self, obj):
+        self.data.append(obj)
+
+    def way(self, obj):
+        self.data.append(obj)
+
+    def relation(self, obj):
+        self.data.append(obj)
+
+def test_parse_callback():
+    handler = CapturingOSMDataHandler()
+    digest.parse_callback(os.path.join("tests", "example.osm"), handler)
+    check_example(handler.data)
+
+def test_parse_callback_file():
+    with open(os.path.join("tests", "example.osm"), encoding="utf8") as file:
+        handler = CapturingOSMDataHandler()
+        digest.parse_callback(file, handler)
+        check_example(handler.data)
+
+def test_parse_callback_gz():
+    handler = CapturingOSMDataHandler()
+    digest.parse_callback(os.path.join("tests", "example.osm.gz"), handler)
+    check_example(handler.data)
+
+def test_parse_callback_xz():
+    handler = CapturingOSMDataHandler()
+    digest.parse_callback(os.path.join("tests", "example.osm.xz"), handler)
+    check_example(handler.data)
+
+def test_parse_callback_bz2():
+    handler = CapturingOSMDataHandler()
+    digest.parse_callback(os.path.join("tests", "example.osm.bz2"), handler)
+    check_example(handler.data)

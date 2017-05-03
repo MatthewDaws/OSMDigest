@@ -92,7 +92,7 @@ class DataProvider():
             self.was_stopped = True
 
 def test_generator_stopped_provider_ended():
-    gen = cbtogen.CallbackToGenerator()
+    gen = cbtogen.CallbackToGenerator(queuesize=1)
     provider = DataProvider()
     gen.set_handler(provider.process, OurHandler(gen))
     

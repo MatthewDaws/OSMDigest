@@ -65,8 +65,8 @@ class CallbackToGenerator():
         # Use of "with" ensures that if an exception is thrown, the thread
         # is automatically closed.
     """
-    def __init__(self):
-        self._queue = queue.Queue(maxsize=1)
+    def __init__(self, queuesize=65536):
+        self._queue = queue.Queue(maxsize=queuesize)
         self._terminate = False
     
     def notify(self, data):
