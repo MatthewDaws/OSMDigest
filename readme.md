@@ -12,3 +12,10 @@ At the time of writing, OSM data cannot easily be read into, say, [geopandas](ht
 ## Usage
 
 Currently under active development.  See [notebooks](notebooks) for some Jupyter notebooks demoing features.
+
+
+
+## Supports
+
+Currently only supports Python 3.5+.  This is due to small API changes only (e.g. `xml.sax.parseString` requires a `bytes` object before 3.5;
+older versions of `pytest` do not support `approx`).
