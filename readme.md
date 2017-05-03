@@ -9,4 +9,4 @@ At the time of writing, OSM data cannot easily be read into, say, [geopandas](ht
 
 ## Usage
 
-Currently under active development.  See [notebooks](tree/master/notebooks) for some Jupyter notebooks demoing features.
+Currently under active development.  See [notebooks](notebooks) for some Jupyter notebooks demoing features.
