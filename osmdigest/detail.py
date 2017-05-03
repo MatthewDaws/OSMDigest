@@ -177,6 +177,10 @@ class Bounds(OSMSingleElement):
     def max_longitude(self):
         """The maximum value of longitude in the data."""
         return self._max_longitude
+
+    @property
+    def name(self):
+        return "bounds"
         
     def __repr__(self):
         return "Bounds(latitude:[{},{}], longitude:[{},{}]".format(self.min_latitude,
@@ -276,6 +280,10 @@ class OSM(OSMSingleElement):
         """The timestamp of the file, or `None`"""
         return self._timestamp
     
+    @property
+    def name(self):
+        return "osm"
+
     def __repr__(self):
         return "OSM(version={}, generator={}, timestamp={})".format(self.version,
             self.generator, self.timestamp)
