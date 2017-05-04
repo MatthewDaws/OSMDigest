@@ -183,8 +183,8 @@ class Bounds(OSMSingleElement):
         return "bounds"
         
     def __repr__(self):
-        return "Bounds(latitude:[{},{}], longitude:[{},{}]".format(self.min_latitude,
-            self.max_latitude, self.min_longitude, self.max_longitude)
+        return "Bounds(longitude:[{},{}], latitude:[{},{}]".format(self.min_longitude,
+            self.max_longitude, self.min_latitude, self.max_latitude)
 
 
 class Tag(OSMSingleElement):
