@@ -42,6 +42,9 @@ class BaseOSMElement():
         """Returns "way", "node" or "relation" as appropriate."""
         return "BaseOSMElement"
         
+    def add_tag(self, key, value):
+        self._tags[key] = value
+        
 
 class Node(BaseOSMElement):
     """A node, stores longitude, latitide an id, together with zero or more
