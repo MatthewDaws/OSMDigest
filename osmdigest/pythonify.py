@@ -53,7 +53,7 @@ class Nodes():
     dictionary.
     
     :param file: Construct from the filename or file-like object; can be
-      anything which :module:`digest` can parse.untitled0.py
+      anything which :module:`digest` can parse.
     :param fast: If True (default) then assume the input XML file is organised
       so that all nodes occur first, then all ways, and then all relations.
     """
