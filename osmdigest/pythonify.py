@@ -125,6 +125,7 @@ class NodesPacked():
         new._osm_ids, new._longitude, new._latitude = NodesPacked._arrays_from_unordered_list(interim_list)
         return new
 
+
 class Ways():
     """Extracts (only) the list of nodes for each way.
     
@@ -365,6 +366,7 @@ class TagsById():
         if osm_id in self._relations:
             return self._relations[osm_id]
         return dict()
+    
         
 def pythonify_and_pickle(file, out_filename):
     """Convert all the data in the XML file and save as pickled files for

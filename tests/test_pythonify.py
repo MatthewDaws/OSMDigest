@@ -54,6 +54,26 @@ test_xml = """<osm version="0.6" generator="CGImap 0.0.2">
 @pytest.fixture
 def xml_file():
     yield io.StringIO(test_xml)
+
+def lists_agree_up_to_ordering(l1, l2):
+    """Use of dictionaries mean that returned lists might be in any order,
+    so we need to allow order to vary..."""
+    if len(l1) != len(l2):
+        return False
+    li1, li2 = list(l1), list(l2)
+    try:
+        for x in li1:
+            index = li2.index(x)
+            del li2[index]
+        return True
+    except ValueError:
+        return False
+        
+def test_lists_agree_up_to_ordering():
+    assert(lists_agree_up_to_ordering([1,2], [1,2]))
+    assert(lists_agree_up_to_ordering([1,2], [2,1]))
+    assert(not lists_agree_up_to_ordering([1,2], [1,2,3]))
+    assert(not lists_agree_up_to_ordering([1,2], [2,3]))
     
 def test_by_key_pair(xml_file):
     tags = pythonify.Tags(xml_file)
@@ -67,27 +87,27 @@ def test_by_key_pair(xml_file):
     
     assert( tags.relations(("a", "b")) == [] )
     assert( tags.relations(("highway", "unclassified")) == [] )
-    assert( tags.relations(("route", "bus")) == [1, 2] )
+    assert( lists_agree_up_to_ordering(tags.relations(("route", "bus")), [1, 2]) )
 
 def test_by_key(xml_file):
     tags = pythonify.Tags(xml_file)
-    assert( tags.nodes_from_key("name") == [("bob", 1), ("dave", 2)] )
+    assert( lists_agree_up_to_ordering(tags.nodes_from_key("name"), [("bob", 1), ("dave", 2)]) )
     assert( tags.nodes_from_key("highway") == [] )
-    assert( tags.ways_from_key("highway") == [("unclassified", 1), ("road", 2)] )
-    assert( tags.relations_from_key("route") == [("bus", 1), ("bus", 2)])
-    assert( tags.relations_from_key("name") == [("64", 1), ("68", 2)])
+    assert( lists_agree_up_to_ordering(tags.ways_from_key("highway"), [("unclassified", 1), ("road", 2)]) )
+    assert( lists_agree_up_to_ordering(tags.relations_from_key("route"), [("bus", 1), ("bus", 2)]) )
+    assert( lists_agree_up_to_ordering(tags.relations_from_key("name"), [("64", 1), ("68", 2)]) )
     
 def test_from_key_value(xml_file):
     tags = pythonify.Tags(xml_file)
     assert( tags.from_key_value("name", "bob") == [("node", 1)] )
-    assert( tags.from_key_value("route", "bus") == [("relation", 1), ("relation", 2)] )
+    assert( lists_agree_up_to_ordering(tags.from_key_value("route", "bus"), [("relation", 1), ("relation", 2)]) )
     
 def test_from_key(xml_file):
     tags = pythonify.Tags(xml_file)
-    assert( tags.from_key("name") == [("node", "bob", 1), ("node", "dave", 2),
-           ("relation", "64", 1), ("relation", "68", 2)] )
-    assert( tags.from_key("highway") == [("way", "unclassified", 1),
-           ("way", "road", 2)] )
+    assert( lists_agree_up_to_ordering(tags.from_key("name"), [("node", "bob", 1), ("node", "dave", 2),
+           ("relation", "64", 1), ("relation", "68", 2)]) )
+    assert( lists_agree_up_to_ordering(tags.from_key("highway"),
+        [("way", "unclassified", 1), ("way", "road", 2)]) )
     
 @pytest.fixture
 def tags(xml_file):
