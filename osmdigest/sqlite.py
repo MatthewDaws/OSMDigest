@@ -47,6 +47,11 @@ class OSM_SQLite():
         self.close()
 
     @property
+    def connection(self):
+        """The underlying database connection: for debugging etc."""
+        return self._connection
+
+    @property
     def osm(self):
         """Returns an :class:`OSM` object detailing how the XML file was
         generated.
@@ -129,6 +134,42 @@ class OSM_SQLite():
                 way = _digest.Way({"id": ref["osm_id"]})
             way.add_node(ref["noderef"])
 
+    def relation(self, osm_id):
+        """Return details of the relation with this id.  Raises KeyError on
+        failure to find.
+        
+        :param osm_id: The OSM id of the relation.
+        
+        :return: An instance of :class:`Relation`.
+        """
+        result = self._connection.execute("select * from relations where osm_id=?", (osm_id,)).fetchall()
+        if result is None or len(result) == 0:
+            raise KeyError()
+        rel = _digest.Relation({"id":osm_id})
+        for r in result:
+            rel.add_member(_digest.Member(type=r["member"],
+                ref=r["memberref"], role=r["role"]))
+        for key, value in self._get_tags("relation_tags", osm_id).items():
+            rel.add_tag(key, value)
+        return rel
+
+    def relations(self):
+        """A generator of all the relations."""
+        result = self._connection.execute("select * from relations order by osm_id")
+        rel = None
+        while True:
+            ref = result.fetchone()
+            if ref is None or (rel is not None and rel.osm_id != ref["osm_id"]):
+                for key, value in self._get_tags("relation_tags", rel.osm_id).items():
+                    rel.add_tag(key, value)
+                yield rel
+                if ref is None:
+                    return
+            if rel is None or rel.osm_id != ref["osm_id"]:
+                rel = _digest.Relation({"id": ref["osm_id"]})
+            rel.add_member(_digest.Member(type=ref["member"],
+                ref=ref["memberref"], role=ref["role"]))
+
 
 def _to_float(num):
     return num / 1e7
@@ -165,6 +206,14 @@ def _write_way(connection, way):
         connection.execute("insert into way_tags(osm_id, key, value) values (?,?,?)",
             (way.osm_id, key, value))
 
+def _write_relation(connection, relation):
+    for member in relation.members:
+        connection.execute("insert into relations(osm_id, member, memberref, role) values (?,?,?,?)",
+            (relation.osm_id, member.type, member.ref, member.role))
+    for key, value in relation.tags.items():
+        connection.execute("insert into relation_tags(osm_id, key, value) values (?,?,?)",
+            (relation.osm_id, key, value))
+
 
 class ConversionReport():
     def __init__(self):
@@ -195,28 +244,40 @@ def convert_gen(xml_file, db_filename):
     """
     gen = _digest.parse(xml_file)
     connection = _sqlite3.connect(db_filename)
-    connection.execute("create table nodes(osm_id integer primary key, longitude integer, latitude integer)")
-    connection.execute("create table node_tags(osm_id integer, key text, value text)")
-    connection.execute("create index node_tags_osm_id_idx on node_tags(osm_id)")
-    connection.execute("create table ways(osm_id integer, position integer, noderef integer)")
-    connection.execute("create index ways_idx on ways(osm_id, position)")
-    connection.execute("create table way_tags(osm_id integer, key text, value text)")
-    connection.execute("create index way_tags_osm_id_idx on way_tags(osm_id)")
-    with connection:
-        _write_osm(connection, next(gen))
-        _write_bounds(connection, next(gen))
-        
-        report = ConversionReport()
+    try:
+        connection.execute("create table nodes(osm_id integer primary key, longitude integer, latitude integer)")
+        connection.execute("create table node_tags(osm_id integer, key text, value text)")
+        connection.execute("create index node_tags_osm_id_idx on node_tags(osm_id)")
+        connection.execute("create table ways(osm_id integer, position integer, noderef integer)")
+        connection.execute("create index ways_idx on ways(osm_id, position)")
+        connection.execute("create table way_tags(osm_id integer, key text, value text)")
+        connection.execute("create index way_tags_osm_id_idx on way_tags(osm_id)")
+        connection.execute("create table relations(osm_id integer, member text, memberref integer, role text)")
+        connection.execute("create index relations_idx on relations(osm_id)")
+        connection.execute("create table relation_tags(osm_id integer, key text, value text)")
+        connection.execute("create index relation_tags_osm_id_idx on relation_tags(osm_id)")
+        with connection:
+            _write_osm(connection, next(gen))
+            _write_bounds(connection, next(gen))
+            
+            report = ConversionReport()
 
-        for element in gen:
-            if element.name == "node":
-                _write_node(connection, element)
-            elif element.name == "way":
-                _write_way(connection, element)
-            report._inc_elements_processed()
-            report._inc_tags_processed(len(element.tags))
-            if report._report():
-                yield report
+            for element in gen:
+                if element.name == "node":
+                    _write_node(connection, element)
+                elif element.name == "way":
+                    _write_way(connection, element)
+                elif element.name == "relation":
+                    _write_relation(connection, element)
+                report._inc_elements_processed()
+                report._inc_tags_processed(len(element.tags))
+                if report._report():
+                    yield report
+    finally:
+        connection.close()
+    connection = _sqlite3.connect(db_filename, isolation_level=None)
+    connection.execute("vacuum")
+    connection.close()
 
 def convert(xml_file, db_filename):
     """Convert the passed XML file to a sqlite3 database file.

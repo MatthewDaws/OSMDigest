@@ -111,6 +111,9 @@ class Relation(BaseOSMElement):
         """A list of members."""
         return self._members
 
+    def add_member(self, member):
+        self._members.append(member)
+
     def __repr__(self):
         return "Relation({} ->  {} {})".format(self.osm_id, self.members, self.tags)
 

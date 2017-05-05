@@ -11,7 +11,7 @@ def xml_file():
         os.remove("test.db")
     except FileNotFoundError:
         pass
-    yield os.path.join("tests","example.osm")
+    yield os.path.join("tests", "example.osm")
     try:
         os.remove("test.db")
     except Exception:
@@ -42,6 +42,12 @@ test_xml = """<osm version="0.7" generator="inline" timestamp="2017-05-01T20:43:
         <way id="8">
             <nd ref="3" /><nd ref="4" /><nd ref="5" />
         </way>
+        <relation id="2">
+            <member type="node" ref="1" role="bob" />
+        </relation>
+        <relation id="4">
+            <member type="way" ref="2" role="" />
+        </relation>
     </osm>"""
 
 @pytest.fixture
@@ -51,7 +57,6 @@ def test_xml_file():
         os.remove("test.db")
     except Exception:
         pass
-
 
 def test_osm_timestamp(test_xml_file):
     sqlite.convert(test_xml_file, "test.db")
@@ -103,4 +108,37 @@ def test_ways_iterator(test_xml_file):
     assert(ways[1].nodes == [1,3])
     assert(ways[2].osm_id == 8)
     assert(ways[2].nodes == [3,4,5])
+    assert(len(ways) == 3)
         
+def test_relations(db):
+    rel = db.relation(56688)
+    
+    for m in rel.members:
+        assert(m.role=="")
+    assert({ m.ref for m in rel.members if m.type == "way" } == {4579143})
+    assert({ m.ref for m in rel.members if m.type == "relation" } == set())
+    assert({ m.ref for m in rel.members if m.type == "node" } == {294942404, 249673494, 364933006})
+
+    assert(rel.tags == {"name": "Küstenbus Linie 123",
+        "network": "VVW",
+        "operator": "Regionalverkehr Küste",
+        "ref": "123",
+        "route": "bus",
+        "type": "route" })
+
+def test_relations_iterator(test_xml_file):
+    sqlite.convert(test_xml_file, "test.db")
+    db = sqlite.OSM_SQLite("test.db")
+
+    rels = list(db.relations())
+    assert(rels[0].osm_id == 2)
+    assert(rels[0].members[0].type == "node")
+    assert(rels[0].members[0].ref == 1)
+    assert(rels[0].members[0].role == "bob")
+    assert(len(rels[0].members) == 1)
+    assert(rels[1].osm_id == 4)
+    assert(rels[1].members[0].type == "way")
+    assert(rels[1].members[0].ref == 2)
+    assert(rels[1].members[0].role == "")
+    assert(len(rels[1].members) == 1)
+    assert(len(rels) == 2)
