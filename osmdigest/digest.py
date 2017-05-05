@@ -86,7 +86,10 @@ class Way(BaseOSMElement):
     
     def __repr__(self):
         return "Way({} ->  {} {})".format(self.osm_id, self.nodes, self.tags)
-    
+
+    def add_node(self, noderef):
+        self._nodes.append(noderef)
+
     @property
     def name(self):
         return "way"

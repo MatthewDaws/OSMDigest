@@ -31,22 +31,39 @@ def test_osm(xml_file):
     assert(db.bounds.max_latitude == 54.0913900)
     assert(db.bounds.max_longitude == 12.2524800)
     
-def test_osm_timestamp(xml_file):
-    file = io.StringIO("""<osm version="0.7" generator="inline" timestamp="2017-05-01T20:43:12Z">
+test_xml = """<osm version="0.7" generator="inline" timestamp="2017-05-01T20:43:12Z">
         <bounds minlat="0" minlon="0" maxlat="10" maxlon="10" />
-    </osm>""")
-    sqlite.convert(file, "test.db")
+        <way id="5">
+            <nd ref="1" /><nd ref="2" />
+        </way>
+        <way id="6">
+            <nd ref="1" /><nd ref="3" />
+        </way>
+        <way id="8">
+            <nd ref="3" /><nd ref="4" /><nd ref="5" />
+        </way>
+    </osm>"""
 
+@pytest.fixture
+def test_xml_file():
+    return io.StringIO(test_xml)
+
+def test_osm_timestamp(test_xml_file):
+    sqlite.convert(test_xml_file, "test.db")
     db = sqlite.OSM_SQLite("test.db")
 
     assert(db.osm.version == "0.7")
     assert(db.osm.generator == "inline")
     assert(db.osm.timestamp == datetime.datetime(2017,5,1,20,43,12))
 
-def test_nodes(xml_file):
+@pytest.fixture
+def db(xml_file):
     sqlite.convert(xml_file, "test.db")
     db = sqlite.OSM_SQLite("test.db")
+    yield db
+    db.close()
 
+def test_nodes(db):
     node = db.node(298884269)
     assert(node.osm_id == 298884269)
     assert(node.longitude == 12.2482632)
@@ -60,3 +77,25 @@ def test_nodes(xml_file):
     
     with pytest.raises(KeyError):
         node = db.node(5)
+
+def test_nodes_iterator(db):
+    osm_ids = { node.osm_id for node in db.nodes() }
+    assert(osm_ids == {298884269, 1831881213, 261728686, 298884272})
+
+def test_ways(db):
+    way = db.way(26659127)
+    assert(way.nodes == [292403538, 298884289, 261728686])
+    assert(way.tags == {"highway": "unclassified", "name": "Pastower Straße"})
+
+def test_ways_iterator(test_xml_file):
+    sqlite.convert(test_xml_file, "test.db")
+    db = sqlite.OSM_SQLite("test.db")
+
+    ways = list(db.ways())
+    assert(ways[0].osm_id == 5)
+    assert(ways[0].nodes == [1,2])
+    assert(ways[1].osm_id == 6)
+    assert(ways[1].nodes == [1,3])
+    assert(ways[2].osm_id == 8)
+    assert(ways[2].nodes == [3,4,5])
+        
