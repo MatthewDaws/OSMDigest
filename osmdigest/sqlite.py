@@ -22,7 +22,8 @@ class OSM_SQLITE():
         timestamp = osm["gentime"]
         del osm["gentime"]
         if timestamp is not None and timestamp != "None":
-            osm["timestamp"] = timestamp
+            d, t = timestamp.split()
+            osm["timestamp"] = "{}T{}Z".format(d, t)
         return _digest.OSM("osm", osm)
 
     @property
