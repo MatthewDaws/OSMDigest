@@ -46,7 +46,12 @@ test_xml = """<osm version="0.7" generator="inline" timestamp="2017-05-01T20:43:
 
 @pytest.fixture
 def test_xml_file():
-    return io.StringIO(test_xml)
+    yield io.StringIO(test_xml)
+    try:
+        os.remove("test.db")
+    except Exception:
+        pass
+
 
 def test_osm_timestamp(test_xml_file):
     sqlite.convert(test_xml_file, "test.db")
