@@ -216,9 +216,10 @@ def _write_relation(connection, relation):
 
 
 class ConversionReport():
-    def __init__(self):
+    def __init__(self, message=None):
         self.elements_processed = 0
         self.tags_generated = 0
+        self.message = message
         
     def _inc_elements_processed(self):
         self.elements_processed += 1
@@ -230,8 +231,10 @@ class ConversionReport():
         return self.elements_processed % 100000 == 0
     
     def __repr__(self):
-        return "ConversionReport(elements_processed={}, tags_generated={})".format(self.elements_processed, self.tags_generated)
-        
+        if self.message is None:
+            return "ConversionReport(elements_processed={}, tags_generated={})".format(self.elements_processed, self.tags_generated)
+        return "ConversionReport(" + self.message + ")"
+
 
 def convert_gen(xml_file, db_filename):
     """Convert the passed XML file to a sqlite3 database file.  As this is
@@ -275,9 +278,6 @@ def convert_gen(xml_file, db_filename):
                     yield report
     finally:
         connection.close()
-    connection = _sqlite3.connect(db_filename, isolation_level=None)
-    connection.execute("vacuum")
-    connection.close()
 
 def convert(xml_file, db_filename):
     """Convert the passed XML file to a sqlite3 database file.
