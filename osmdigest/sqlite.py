@@ -4,14 +4,85 @@ sqlite
 
 Converts OSM data from XML format to a simple relational database format, using
 the Python standard library `sqlite3` module.
+
+Typical usage is then:
+    
+    # Generate a DB file from some compressed XML input data
+    convert("input.osm.bz2", "output.db")
+    
+    # Now connect to and use the database
+    db = OSM_SQLite("output.db")
+    # Find a particular node
+    node = db.node(1234)
+    # Iterate over all ways, finding those with a certain tag
+    for way in db.ways():
+        if "building" in way.tags():
+            # Do something...
+            pass
 """
 
 from . import digest as _digest
 import sqlite3 as _sqlite3
 
 
-# Read only
+class RichWay(_digest.Way):
+    """Subclass of :class:`Way` which stores complete node information."""
+    def __init__(self, way, db):
+        super().__init__({"id":way.osm_id})
+        self._nodes = way._nodes
+        self._tags = way._tags
+        self._full_nodes = []
+        for node_id in way.nodes:
+            self._full_nodes.append(db.node(node_id))
+
+    @property
+    def complete_nodes(self):
+        """Returns an ordered list of :class:`Node` instances which
+        form the way.
+        """
+        return self._full_nodes
+    
+    def __repr__(self):
+        return "RichWay({} ->  {} {})".format(self.osm_id, self.complete_nodes, self.tags)
+
+
+class RichRelation(_digest.Relation):
+    """Subclass of :class:`Relation` which stores full details of any node,
+    way or relation which forms a member.
+    """
+    def __init__(self, relation, db):
+        super().__init__({"id":relation.osm_id})
+        self._tags = relation._tags
+        self._members = relation._members
+        self._full_members = []
+        for member in self._members:
+            if member.type == "node":
+                detail = db.node(member.ref)
+            elif member.type == "way":
+                detail = db.complete_way(member.ref)
+            elif member.type == "relation":
+                detail = db.complete_relation(member.ref)
+            self._full_members.append(detail)
+    
+    @property
+    def complete_members(self):
+        """Returns a list of members, each entry of which is a fully populated
+        node, way or relation object.
+        """
+        return self._full_members
+    
+    def __repr__(self):
+        # Deliberately aneamic so as to not spam...
+        return "RichRelation({} ->  {} {})".format(self.osm_id, self.members, self.tags)
+
+
 class OSM_SQLite():
+    """Connects to the generated SQLite database, and provides methods for
+    reading rich data from the database.
+    
+    :param db_filename: The generated SQLite database file.  No data is
+      written.
+    """
     def __init__(self, db_filename):
         self._connection = _sqlite3.connect(db_filename)
         self._connection.row_factory = _sqlite3.Row
@@ -88,7 +159,7 @@ class OSM_SQLite():
         """
         result = self._connection.execute("select * from nodes where nodes.osm_id=?", (osm_id,)).fetchone()
         if result is None:
-            raise KeyError()
+            raise KeyError("Node {} not found".format(osm_id))
         return self._node_from_obj(result)
 
     def nodes(self):
@@ -110,14 +181,27 @@ class OSM_SQLite():
         """
         result = self._connection.execute("select noderef from ways where osm_id=? order by position", (osm_id,)).fetchall()
         if result is None or len(result) == 0:
-            raise KeyError()
+            raise KeyError("Way {} not found".format(osm_id))
         way = _digest.Way({"id":osm_id})
         for r in result:
             way.add_node(r["noderef"])
         for key, value in self._get_tags("way_tags", osm_id).items():
             way.add_tag(key, value)
         return way
-
+    
+    def complete_way(self, osm_id):
+        """Return full details of the way with this id: gives a complete list
+        of nodes, not just their ids.  Raises KeyError on failure to find.
+        
+        :param osm_id: The OSM id of the way.  Alternatively, a :class:`Way`
+          instance to augment with full node details.
+        
+        :return: An instance of :class:`RichWay`.
+        """
+        if isinstance(osm_id, _digest.Way):
+            osm_id = osm_id.osm_id
+        return RichWay(self.way(osm_id), self)
+        
     def ways(self):
         """A generator of all ways."""
         result = self._connection.execute("select osm_id, noderef from ways order by osm_id, position")
@@ -144,7 +228,7 @@ class OSM_SQLite():
         """
         result = self._connection.execute("select * from relations where osm_id=?", (osm_id,)).fetchall()
         if result is None or len(result) == 0:
-            raise KeyError()
+            raise KeyError("Relation {} not found".format(osm_id))
         rel = _digest.Relation({"id":osm_id})
         for r in result:
             rel.add_member(_digest.Member(type=r["member"],
@@ -152,6 +236,20 @@ class OSM_SQLite():
         for key, value in self._get_tags("relation_tags", osm_id).items():
             rel.add_tag(key, value)
         return rel
+
+    def complete_relation(self, osm_id):
+        """Return full details of the relation with this id: gives a complete
+        list of objects, not just their ids.  Raises KeyError on failure to
+        find.
+        
+        :param osm_id: The OSM id of the relation.  Alternatively, a
+          :class:`Relation` instance to augment with full details.
+        
+        :return: An instance of :class:`RichRelation`.
+        """
+        if isinstance(osm_id, _digest.Relation):
+            osm_id = osm_id.osm_id
+        return RichRelation(self.relation(osm_id), self)
 
     def relations(self):
         """A generator of all the relations."""
@@ -178,7 +276,6 @@ def _to_num(fl):
     if fl >= 0:
         return int(fl * 1e7 + 0.5)
     return int(fl * 1e7 - 0.5)
-
 
 def _write_osm(connection, osm):
     connection.execute("create table osm(version text, generator text, gentime text)")

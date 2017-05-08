@@ -33,6 +33,11 @@ def test_osm(xml_file):
     
 test_xml = """<osm version="0.7" generator="inline" timestamp="2017-05-01T20:43:12Z">
         <bounds minlat="0" minlon="0" maxlat="10" maxlon="10" />
+        <node id="1" lat="1.1" lon="1.2" />
+        <node id="2" lat="1.3" lon="1.4" />
+        <node id="3" lat="1.5" lon="1.6" />
+        <node id="4" lat="1.7" lon="1.8" />
+        <node id="5" lat="1.9" lon="2.0" />
         <way id="5">
             <nd ref="1" /><nd ref="2" />
         </way>
@@ -46,7 +51,7 @@ test_xml = """<osm version="0.7" generator="inline" timestamp="2017-05-01T20:43:
             <member type="node" ref="1" role="bob" />
         </relation>
         <relation id="4">
-            <member type="way" ref="2" role="" />
+            <member type="way" ref="5" role="" />
         </relation>
     </osm>"""
 
@@ -110,6 +115,22 @@ def test_ways_iterator(test_xml_file):
     assert(ways[2].nodes == [3,4,5])
     assert(len(ways) == 3)
         
+def test_way_complete(test_xml_file):
+    sqlite.convert(test_xml_file, "test.db")
+    db = sqlite.OSM_SQLite("test.db")
+
+    way = db.complete_way(5)
+    assert(way.complete_nodes[0].longitude == 1.2)
+    assert(way.complete_nodes[0].latitude == 1.1)
+    assert(way.complete_nodes[1].longitude == 1.4)
+    assert(way.complete_nodes[1].latitude == 1.3)
+    
+    way = db.complete_way(db.way(5))
+    assert(way.complete_nodes[0].longitude == 1.2)
+    assert(way.complete_nodes[0].latitude == 1.1)
+    assert(way.complete_nodes[1].longitude == 1.4)
+    assert(way.complete_nodes[1].latitude == 1.3)
+    
 def test_relations(db):
     rel = db.relation(56688)
     
@@ -138,7 +159,18 @@ def test_relations_iterator(test_xml_file):
     assert(len(rels[0].members) == 1)
     assert(rels[1].osm_id == 4)
     assert(rels[1].members[0].type == "way")
-    assert(rels[1].members[0].ref == 2)
+    assert(rels[1].members[0].ref == 5)
     assert(rels[1].members[0].role == "")
     assert(len(rels[1].members) == 1)
     assert(len(rels) == 2)
+
+def test_relation_complete(test_xml_file):
+    sqlite.convert(test_xml_file, "test.db")
+    db = sqlite.OSM_SQLite("test.db")
+
+    rel = db.complete_relation(4)
+    assert(isinstance(rel.complete_members[0], sqlite.RichWay))
+    assert(rel.complete_members[0].osm_id == 5)
+    assert(rel.complete_members[0].complete_nodes[0].longitude == 1.2)
+    assert(rel.complete_members[0].complete_nodes[0].latitude == 1.1)
+    
