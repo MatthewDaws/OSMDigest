@@ -23,58 +23,7 @@ Typical usage is then:
 
 from . import digest as _digest
 import sqlite3 as _sqlite3
-
-
-class RichWay(_digest.Way):
-    """Subclass of :class:`Way` which stores complete node information."""
-    def __init__(self, way, db):
-        super().__init__({"id":way.osm_id})
-        self._nodes = way._nodes
-        self._tags = way._tags
-        self._full_nodes = []
-        for node_id in way.nodes:
-            self._full_nodes.append(db.node(node_id))
-
-    @property
-    def complete_nodes(self):
-        """Returns an ordered list of :class:`Node` instances which
-        form the way.
-        """
-        return self._full_nodes
-    
-    def __repr__(self):
-        return "RichWay({} ->  {} {})".format(self.osm_id, self.complete_nodes, self.tags)
-
-
-class RichRelation(_digest.Relation):
-    """Subclass of :class:`Relation` which stores full details of any node,
-    way or relation which forms a member.
-    """
-    def __init__(self, relation, db):
-        super().__init__({"id":relation.osm_id})
-        self._tags = relation._tags
-        self._members = relation._members
-        self._full_members = []
-        for member in self._members:
-            if member.type == "node":
-                detail = db.node(member.ref)
-            elif member.type == "way":
-                detail = db.complete_way(member.ref)
-            elif member.type == "relation":
-                detail = db.complete_relation(member.ref)
-            self._full_members.append(detail)
-    
-    @property
-    def complete_members(self):
-        """Returns a list of members, each entry of which is a fully populated
-        node, way or relation object.
-        """
-        return self._full_members
-    
-    def __repr__(self):
-        # Deliberately aneamic so as to not spam...
-        return "RichRelation({} ->  {} {})".format(self.osm_id, self.members, self.tags)
-
+from . import richobjs
 
 class OSM_SQLite():
     """Connects to the generated SQLite database, and provides methods for
@@ -135,10 +84,116 @@ class OSM_SQLite():
         return self._bounds
     
     def _get_tags(self, dbname, osm_id):
-        #tags = self._connection.execute("select key, value from ? where osm_id=?", (dbname, osm_id)).fetchall()
         tags = self._connection.execute("select key, value from "+dbname+" where osm_id=?", (osm_id,)).fetchall()
         return { key:value for (key, value) in tags }
-    
+
+    @staticmethod
+    def _yield_ids(dbresult):
+        while True:
+            osm_id = dbresult.fetchone()
+            if osm_id is None:
+                return
+            yield osm_id[0]
+
+    def _search_tags(self, dbname, key, value):
+        """Generator returning ids of matches"""
+        tags = self._connection.execute("select osm_id from "+dbname+" where key=? and value=?", (key,value))
+        yield from self._yield_ids(tags)
+
+    def _search_tag_keys(self, dbname, key):
+        """Generator returning ids of matches"""
+        tags = self._connection.execute("select osm_id from "+dbname+" where key=?", (key,))
+        yield from self._yield_ids(tags)
+
+    def _search_all_tags(self, dbname, wanted_tags):
+        """Generator of ids which match all wanted_tags"""
+        wanted_tags = list(wanted_tags.items())
+        if len(wanted_tags) == 0:
+            raise ValueError("Must specify at least one tag")
+        for osm_id in self._search_tags(dbname, wanted_tags[0][0], wanted_tags[0][1]):
+            tags = self._get_tags(dbname, osm_id)
+            if all( key in tags and tags[key] == value for (key, value) in wanted_tags ):
+                yield osm_id
+
+    def _search_all_tag_keys(self, dbname, wanted_keys):
+        """Generator of ids which match all wanted_tags"""
+        wanted_tags = list(wanted_keys)
+        if len(wanted_tags) == 0:
+            raise ValueError("Must specify at least one tag key")
+        for osm_id in self._search_tag_keys(dbname, wanted_tags[0]):
+            tags = self._get_tags(dbname, osm_id)
+            if all( key in tags for key in wanted_tags ):
+                yield osm_id
+
+    def search_relation_tags(self, tags):
+        """Search all relations for any with matching tags.
+
+        :param tags: A dictionary of key/value pairs.  Only relations with all
+          these tags are returned.
+        
+        :return: A list of matching relations.
+        """
+        return [self.relation(osm_id) for osm_id in self._search_all_tags("relation_tags", tags)]
+
+    def search_way_tags(self, tags):
+        """Search all ways for any with matching tags.
+
+        :param tags: A dictionary of key/value pairs.  Only ways with all
+          these tags are returned.
+        
+        :return: A list of matching ways.
+        """
+        return [self.way(osm_id) for osm_id in self._search_all_tags("way_tags", tags)]
+
+    def search_node_tags(self, tags):
+        """Search all nodes for any with matching tags.
+
+        :param tags: A dictionary of key/value pairs.  Only nodes with all
+          these tags are returned.
+        
+        :return: A list of matching nodes.
+        """
+        return [self.node(osm_id) for osm_id in self._search_all_tags("node_tags", tags)]
+
+    def search_relation_tag_keys(self, keys):
+        """Search all relations for any with matching tag keys.
+
+        :param keys: A set of keys to search for.  Any relations which have
+          tags for all these keys (and any values) will be returned.
+        
+        :return: A generator (for efficiency) of matching relations.
+        """
+        for osm_id in self._search_all_tag_keys("relation_tags", keys):
+            yield self.relation(osm_id)
+
+    def search_way_tag_keys(self, keys, just_ids = False):
+        """Search all ways for any with matching tag keys.
+
+        :param keys: A set of keys to search for.  Any ways which have tags
+          for all these keys (and any values) will be returned.
+        :param just_ids: If True, then only return the osm_id's of the ways.
+          Default is False.
+        
+        :return: A generator (for efficiency) of matching ways.
+        """
+        gen = self._search_all_tag_keys("way_tags", keys)
+        if just_ids:
+            yield from gen
+        else:
+            for osm_id in gen:
+                yield self.way(osm_id)
+
+    def search_node_tag_keys(self, keys):
+        """Search all nodes for any with matching tag keys.
+
+        :param keys: A set of keys to search for.  Any nodes which have tags
+          for all these keys (and any values) will be returned.
+        
+        :return: A generator (for efficiency) of matching nodes.
+        """
+        for osm_id in self._search_all_tag_keys("node_tags", keys):
+            yield self.node(osm_id)
+
     def _node_from_obj(self, result):
         osm_id = result["osm_id"]
         data = { "id": osm_id,
@@ -165,6 +220,18 @@ class OSM_SQLite():
     def nodes(self):
         """A generator of all nodes."""
         result = self._connection.execute("select * from nodes")
+        while True:
+            node = result.fetchone()
+            if node is None:
+                return
+            yield self._node_from_obj(node)
+
+    def nodes_in_bounding_box(self, minlon, maxlon, minlat, maxlat):
+        """Find all nodes which fall in the bounding box, giving a generator
+        of :class:`Node` instances.
+        """
+        result = self._connection.execute("select * from nodes where longitude >= ? and longitude <= ? and latitude >= ? and latitude <= ?",
+            (_to_num(minlon), _to_num(maxlon), _to_num(minlat), _to_num(maxlat)))
         while True:
             node = result.fetchone()
             if node is None:
@@ -199,8 +266,13 @@ class OSM_SQLite():
         :return: An instance of :class:`RichWay`.
         """
         if isinstance(osm_id, _digest.Way):
-            osm_id = osm_id.osm_id
-        return RichWay(self.way(osm_id), self)
+            way = osm_id
+        else:
+            way = self.way(osm_id)
+        def provider():
+            for node_id in way.nodes:
+                yield self.node(node_id)
+        return richobjs.RichWay(way, provider())
         
     def ways(self):
         """A generator of all ways."""
@@ -249,7 +321,16 @@ class OSM_SQLite():
         """
         if isinstance(osm_id, _digest.Relation):
             osm_id = osm_id.osm_id
-        return RichRelation(self.relation(osm_id), self)
+        relation = self.relation(osm_id)
+        def provide_full_members():
+            for member in relation.members:
+                if member.type == "node":
+                    yield self.node(member.ref)
+                elif member.type == "way":
+                    yield self.complete_way(member.ref)
+                elif member.type == "relation":
+                    yield self.complete_relation(member.ref)
+        return richobjs.RichRelation(relation, provide_full_members())
 
     def relations(self):
         """A generator of all the relations."""
@@ -268,6 +349,64 @@ class OSM_SQLite():
             rel.add_member(_digest.Member(type=ref["member"],
                 ref=ref["memberref"], role=ref["role"]))
 
+
+def _node_ids_in_bb(db, minlon, maxlon, minlat, maxlat):
+    result = db.connection.execute("select osm_id from nodes where longitude >= ? and longitude <= ? and latitude >= ? and latitude <= ?",
+        (_to_num(minlon), _to_num(maxlon), _to_num(minlat), _to_num(maxlat))).fetchall()
+    return set(row[0] for row in result)
+
+def _chunk_in_request(db, search_set, query):
+    chunk = 10240
+    search = list(search_set)
+    out = set()
+    while len(search) > 0:
+        if len(search) <= chunk:
+            this_search, search = search, []
+        else:
+            this_search, search = search[:chunk], search[chunk:]
+        this_search_string = ",".join(str(x) for x in this_search)
+        out.update(row[0] for row in
+            db.connection.execute(query.format(this_search_string)).fetchall() )
+    return out
+
+def _ways_from_nodes(db, node_set):
+    return _chunk_in_request(db, node_set, "select osm_id from ways where noderef in ({})")
+
+def _all_nodes_from_ways(db, way_set):
+    return _chunk_in_request(db, way_set, "select noderef from ways where osm_id in ({})")
+
+def extract(db, minlon, maxlon, minlat, maxlat, out_filename):
+    """Create a new database based on the parsed bounding box.  We extract all
+    ways which feature at least one node in the bounding box.  Then all nodes
+    in the bounding box, and all nodes required for these ways, are returned.
+    Any relation which features a node or way in the dataset is also returned
+    (but such a relation is allowed to also have a way/node which is not in the
+    dataset).
+
+    As might be expected, this can be rather memory intensive.
+
+    :param db: A :class:`OSM_SQLite` object to extract from.
+    :param out_filename: The new database to construct.
+    """
+    def gen():
+        yield _digest.OSM("osm", {"version":db.osm.version, "generator":db.osm.generator+" / extract by OSMDigest"})
+        yield _digest.Bounds("bounds", {"minlon":minlon, "maxlon":maxlon, "minlat":minlat, "maxlat":maxlat})
+
+        valid_node_ids = _node_ids_in_bb(db, minlon, maxlon, minlat, maxlat)
+        valid_way_ids = _ways_from_nodes(db, valid_node_ids)
+        valid_node_ids = valid_node_ids | _all_nodes_from_ways(db, valid_way_ids)
+
+        for nodeid in valid_node_ids:
+            yield db.node(nodeid)
+        for wayid in valid_way_ids:
+            yield db.way(wayid)
+        for relation in db.relations():
+            if any( ( m.type=="node" and m.ref in valid_node_ids ) or
+                ( m.type=="way" and m.ref in valid_way_ids ) for m in relation.members ):
+                yield relation
+        
+    for _ in _convert_gen_from_any_source(gen(), out_filename):
+        pass
 
 def _to_float(num):
     return num / 1e7
@@ -333,29 +472,24 @@ class ConversionReport():
         return "ConversionReport(" + self.message + ")"
 
 
-def convert_gen(xml_file, db_filename):
-    """Convert the passed XML file to a sqlite3 database file.  As this is
-    rather slow, this function is a generator which will `yield` information
-    on its progress.
+def _schema_db(connection):
+    """Build all the tables and indexes"""
+    connection.execute("create table nodes(osm_id integer primary key, longitude integer, latitude integer)")
+    connection.execute("create table node_tags(osm_id integer, key text, value text)")
+    connection.execute("create index node_tags_osm_id_idx on node_tags(osm_id)")
+    connection.execute("create table ways(osm_id integer, position integer, noderef integer)")
+    connection.execute("create index ways_idx on ways(osm_id, position)")
+    connection.execute("create table way_tags(osm_id integer, key text, value text)")
+    connection.execute("create index way_tags_osm_id_idx on way_tags(osm_id)")
+    connection.execute("create table relations(osm_id integer, member text, memberref integer, role text)")
+    connection.execute("create index relations_idx on relations(osm_id)")
+    connection.execute("create table relation_tags(osm_id integer, key text, value text)")
+    connection.execute("create index relation_tags_osm_id_idx on relation_tags(osm_id)")
 
-    :param xml_file: Construct from the filename or file-like object; can be
-      anything which :module:`digest` can parse.
-    :param db_filename: Filename to pass to the `sqlite3` module.
-    """
-    gen = _digest.parse(xml_file)
+def _convert_gen_from_any_source(gen, db_filename):
     connection = _sqlite3.connect(db_filename)
     try:
-        connection.execute("create table nodes(osm_id integer primary key, longitude integer, latitude integer)")
-        connection.execute("create table node_tags(osm_id integer, key text, value text)")
-        connection.execute("create index node_tags_osm_id_idx on node_tags(osm_id)")
-        connection.execute("create table ways(osm_id integer, position integer, noderef integer)")
-        connection.execute("create index ways_idx on ways(osm_id, position)")
-        connection.execute("create table way_tags(osm_id integer, key text, value text)")
-        connection.execute("create index way_tags_osm_id_idx on way_tags(osm_id)")
-        connection.execute("create table relations(osm_id integer, member text, memberref integer, role text)")
-        connection.execute("create index relations_idx on relations(osm_id)")
-        connection.execute("create table relation_tags(osm_id integer, key text, value text)")
-        connection.execute("create index relation_tags_osm_id_idx on relation_tags(osm_id)")
+        _schema_db(connection)
         with connection:
             _write_osm(connection, next(gen))
             _write_bounds(connection, next(gen))
@@ -375,6 +509,18 @@ def convert_gen(xml_file, db_filename):
                     yield report
     finally:
         connection.close()
+
+def convert_gen(xml_file, db_filename):
+    """Convert the passed XML file to a sqlite3 database file.  As this is
+    rather slow, this function is a generator which will `yield` information
+    on its progress.
+
+    :param xml_file: Construct from the filename or file-like object; can be
+      anything which :module:`digest` can parse.
+    :param db_filename: Filename to pass to the `sqlite3` module.
+    """
+    gen = _digest.parse(xml_file)
+    yield from _convert_gen_from_any_source(gen, db_filename)
 
 def convert(xml_file, db_filename):
     """Convert the passed XML file to a sqlite3 database file.
