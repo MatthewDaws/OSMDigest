@@ -20,7 +20,10 @@ def _centroid(gen):
         lon += pair[0]
         lat += pair[1]
         n += 1
+    if n == 0:
+        raise ValueError("No points found to compute centroid from")
     return lon / n, lat / n
+
 
 class RichWay(_digest.Way):
     """Subclass of :class:`Way` which stores complete node information.
